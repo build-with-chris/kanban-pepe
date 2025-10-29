@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pepe-Dom - Kanban Board</title>
+    
+    <!-- Supabase Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         * {
             margin: 0;
@@ -16,6 +20,58 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             color: #333;
+        }
+
+        /* Sync Status Indicator */
+        .sync-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 1000;
+            font-size: 14px;
+        }
+
+        .sync-status.syncing {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .sync-status.synced {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .sync-status.offline {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .sync-icon {
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }
+
+        .sync-status.synced .sync-icon {
+            animation: none;
+            border: none;
+            background: currentColor;
+            width: 6px;
+            height: 6px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         /* Vision Screen */
@@ -58,15 +114,22 @@
         }
 
         .vision-content h1 {
-            font-size: 3em;
-            margin-bottom: 30px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+            font-size: 3.5em;
+            margin-bottom: 40px;
+            text-shadow: 3px 3px 8px rgba(0,0,0,0.4);
+            font-weight: 700;
+            letter-spacing: -1px;
+            background: linear-gradient(to bottom, #ffffff 0%, #f0f0f0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));
         }
 
         .vision-text {
             font-size: 1.5em;
             line-height: 1.8;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             min-height: 120px;
         }
 
@@ -81,10 +144,6 @@
             animation-delay: 1.5s;
         }
 
-        .vision-sentence.delay-2 {
-            animation-delay: 3.5s;
-        }
-
         @keyframes fadeInSentence {
             from {
                 opacity: 0;
@@ -94,16 +153,6 @@
                 opacity: 1;
                 transform: translateY(0);
             }
-        }
-
-        .countdown {
-            margin-top: 40px;
-            font-size: 1.8em;
-            opacity: 0.7;
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
         }
 
         /* Main App */
@@ -138,6 +187,15 @@
         h1 {
             color: #667eea;
             font-size: 2em;
+        }
+
+        .info-badge {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 500;
         }
 
         .week-goals {
@@ -307,6 +365,33 @@
             padding: 2px 8px;
         }
 
+        .card-priority {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.7em;
+            font-weight: 600;
+            margin-right: 8px;
+        }
+
+        .priority-high {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 3px solid #dc2626;
+        }
+
+        .priority-medium {
+            background: #fef3c7;
+            color: #92400e;
+            border-left: 3px solid #f59e0b;
+        }
+
+        .priority-low {
+            background: #d1fae5;
+            color: #065f46;
+            border-left: 3px solid #10b981;
+        }
+
         .card-actions {
             display: flex;
             gap: 8px;
@@ -463,6 +548,23 @@
             border: 2px dashed #667eea;
         }
 
+        /* Loading */
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .loading-spinner {
+            border: 3px solid #e5e7eb;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .kanban-board {
@@ -470,16 +572,29 @@
             }
             
             .vision-content h1 {
-                font-size: 2em;
+                font-size: 2.5em;
             }
             
             .vision-text {
                 font-size: 1.1em;
             }
+
+            .sync-status {
+                top: 10px;
+                right: 10px;
+                font-size: 12px;
+                padding: 8px 15px;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Sync Status -->
+    <div class="sync-status offline" id="syncStatus">
+        <div class="sync-icon"></div>
+        <span id="syncText">Offline</span>
+    </div>
+
     <!-- Vision Screen -->
     <div class="vision-screen" id="visionScreen">
         <div class="vision-content">
@@ -488,7 +603,6 @@
                 <span class="vision-sentence">Der Pepe-Dom ist ein offener Ort der Begegnung in München, an dem Kunst, Vielfalt und Gemeinschaft zusammenkommen.</span>
                 <span class="vision-sentence delay-1">Unser Ziel ist es, diesen besonderen Raum dauerhaft zu erhalten und mit abwechslungsreichen Shows und Events ein lebendiges Erlebnis für die ganze Stadt zu schaffen.</span>
             </div>
-            <div class="countdown" id="countdown">7</div>
         </div>
     </div>
 
@@ -496,8 +610,8 @@
     <div class="app-container" id="appContainer">
         <header>
             <h1>📋 Pepe-Dom - Kanban Board</h1>
-            <div>
-                <span id="currentDate"></span>
+            <div class="info-badge">
+                🌍 Gemeinsames Board für Alle
             </div>
         </header>
 
@@ -570,6 +684,15 @@
                 </div>
 
                 <div class="form-group">
+                    <label for="cardPriority">Priorität</label>
+                    <select id="cardPriority" required>
+                        <option value="high">🔴 Hoch</option>
+                        <option value="medium" selected>🟡 Mittel</option>
+                        <option value="low">🟢 Niedrig</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
                     <label>Tags</label>
                     <div class="tag-selector">
                         <div class="tag-option">
@@ -624,7 +747,7 @@
 
                 <div class="form-group">
                     <label for="emailSubject">Betreff</label>
-                    <input type="text" id="emailSubject" value="Erinnerung: Aufgabe im Pepe Project">
+                    <input type="text" id="emailSubject" value="Erinnerung: Aufgabe im Pepe-Dom">
                 </div>
 
                 <div class="form-group">
@@ -641,222 +764,478 @@
     </div>
 
     <script>
-        // Data Storage
-        let cards = JSON.parse(localStorage.getItem('pepeKanbanCards')) || [];
-        let weekGoals = JSON.parse(localStorage.getItem('pepeWeekGoals')) || [];
-        let cardIdCounter = parseInt(localStorage.getItem('pepeCardIdCounter')) || 1;
-
-        // Vision Screen
-        function showVisionScreen() {
-            const visionScreen = document.getElementById('visionScreen');
-            const appContainer = document.getElementById('appContainer');
-            const countdown = document.getElementById('countdown');
+        // ========================================
+        // SUPABASE CONFIGURATION
+        // ========================================
+        
+        // WICHTIG: Ersetze diese Werte mit deinen eigenen Supabase-Credentials
+        const SUPABASE_URL = 'https://your-project.supabase.co';
+        const SUPABASE_ANON_KEY = 'your-anon-key-here';
+        
+        // Shared workspace ID - alle nutzen den gleichen Workspace
+        const SHARED_WORKSPACE_ID = 'pepe-dom-shared';
+        
+        // Initialisiere Supabase Client
+        let supabase;
+        let realtimeChannel;
+        
+        // ========================================
+        // INITIALIZATION
+        // ========================================
+        
+        async function initSupabase() {
+            if (SUPABASE_URL === 'https://your-project.supabase.co') {
+                console.warn('⚠️ Bitte Supabase-Credentials eintragen für Cloud-Sync!');
+                console.log('📦 Nutze localStorage als Fallback');
+                useFallbackStorage();
+                return;
+            }
             
-            let count = 7;
-            const timer = setInterval(() => {
-                count--;
-                countdown.textContent = count;
+            try {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+                    auth: {
+                        persistSession: false,
+                        autoRefreshToken: false
+                    }
+                });
                 
-                if (count <= 0) {
-                    clearInterval(timer);
-                    visionScreen.classList.add('hidden');
-                    setTimeout(() => {
-                        visionScreen.style.display = 'none';
-                        appContainer.classList.add('visible');
-                    }, 1000);
-                }
-            }, 1000);
-        }
-
-        // Initialize App
-        function initApp() {
-            showVisionScreen();
-            loadCards();
-            loadWeekGoals();
-            updateCurrentDate();
-            setupDragAndDrop();
-        }
-
-        // Current Date
-        function updateCurrentDate() {
-            const dateElement = document.getElementById('currentDate');
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            dateElement.textContent = new Date().toLocaleDateString('de-DE', options);
-        }
-
-        // Week Goals
-        function addWeekGoal() {
-            const goal = prompt('Neues Wochenziel eingeben:');
-            if (goal && goal.trim()) {
-                const goalObj = {
-                    id: Date.now(),
-                    text: goal.trim(),
-                    completed: false
-                };
-                weekGoals.push(goalObj);
-                saveWeekGoals();
-                renderWeekGoals();
+                // Setup Realtime subscriptions für Live-Updates
+                setupRealtimeSubscriptions();
+                
+                // Load initial data
+                await loadAllData();
+                updateSyncStatus('synced', 'Online - Live Sync');
+                
+            } catch (error) {
+                console.error('Supabase init error:', error);
+                useFallbackStorage();
             }
         }
-
-        function toggleGoal(id) {
-            const goal = weekGoals.find(g => g.id === id);
+        
+        // ========================================
+        // REALTIME SUBSCRIPTIONS
+        // ========================================
+        
+        function setupRealtimeSubscriptions() {
+            if (!supabase) return;
+            
+            // Subscribe to changes in cards
+            realtimeChannel = supabase
+                .channel('shared-workspace')
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'shared_cards',
+                    filter: `workspace_id=eq.${SHARED_WORKSPACE_ID}`
+                }, payload => {
+                    console.log('Card change received:', payload);
+                    handleRealtimeCardChange(payload);
+                })
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'shared_goals',
+                    filter: `workspace_id=eq.${SHARED_WORKSPACE_ID}`
+                }, payload => {
+                    console.log('Goal change received:', payload);
+                    handleRealtimeGoalChange(payload);
+                })
+                .subscribe();
+        }
+        
+        async function handleRealtimeCardChange(payload) {
+            updateSyncStatus('syncing', 'Aktualisiere...');
+            await loadCards();
+            updateSyncStatus('synced', 'Online - Live Sync');
+        }
+        
+        async function handleRealtimeGoalChange(payload) {
+            updateSyncStatus('syncing', 'Aktualisiere...');
+            await loadWeekGoals();
+            updateSyncStatus('synced', 'Online - Live Sync');
+        }
+        
+        // ========================================
+        // FALLBACK STORAGE (localStorage)
+        // ========================================
+        
+        function useFallbackStorage() {
+            updateSyncStatus('offline', 'Lokaler Modus');
+            
+            // Override database functions with localStorage
+            window.loadCards = loadCardsLocal;
+            window.saveCard = saveCardLocal;
+            window.deleteCard = deleteCardLocal;
+            window.loadWeekGoals = loadWeekGoalsLocal;
+            window.saveWeekGoal = saveWeekGoalLocal;
+            window.deleteGoal = deleteGoalLocal;
+            window.toggleGoal = toggleGoalLocal;
+            window.updateCardStatus = updateCardStatusLocal;
+            
+            loadAllDataLocal();
+        }
+        
+        // ========================================
+        // DATABASE OPERATIONS (Shared Workspace)
+        // ========================================
+        
+        async function loadAllData() {
+            updateSyncStatus('syncing', 'Lade Daten...');
+            await Promise.all([
+                loadCards(),
+                loadWeekGoals()
+            ]);
+            updateSyncStatus('synced', 'Online - Live Sync');
+        }
+        
+        async function loadCards() {
+            if (!supabase) return loadCardsLocal();
+            
+            try {
+                const { data, error } = await supabase
+                    .from('shared_cards')
+                    .select('*')
+                    .eq('workspace_id', SHARED_WORKSPACE_ID)
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                renderCards(data || []);
+            } catch (error) {
+                console.error('Error loading cards:', error);
+                loadCardsLocal();
+            }
+        }
+        
+        async function saveCard(cardData) {
+            if (!supabase) return saveCardLocal(cardData);
+            
+            updateSyncStatus('syncing', 'Speichere...');
+            
+            try {
+                if (cardData.id) {
+                    // Update existing card
+                    const { error } = await supabase
+                        .from('shared_cards')
+                        .update({
+                            title: cardData.title,
+                            description: cardData.description,
+                            tags: cardData.tags,
+                            status: cardData.status,
+                            priority: cardData.priority,
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', cardData.id)
+                        .eq('workspace_id', SHARED_WORKSPACE_ID);
+                    
+                    if (error) throw error;
+                } else {
+                    // Create new card
+                    const { error } = await supabase
+                        .from('shared_cards')
+                        .insert({
+                            workspace_id: SHARED_WORKSPACE_ID,
+                            title: cardData.title,
+                            description: cardData.description,
+                            tags: cardData.tags,
+                            status: cardData.status,
+                            priority: cardData.priority
+                        });
+                    
+                    if (error) throw error;
+                }
+                
+                await loadCards();
+                updateSyncStatus('synced', 'Gespeichert');
+            } catch (error) {
+                console.error('Error saving card:', error);
+                saveCardLocal(cardData);
+            }
+        }
+        
+        async function deleteCard(cardId) {
+            if (!supabase) return deleteCardLocal(cardId);
+            
+            if (!confirm('Möchten Sie diese Karte wirklich löschen?')) return;
+            
+            updateSyncStatus('syncing', 'Lösche...');
+            
+            try {
+                const { error } = await supabase
+                    .from('shared_cards')
+                    .delete()
+                    .eq('id', cardId)
+                    .eq('workspace_id', SHARED_WORKSPACE_ID);
+                
+                if (error) throw error;
+                
+                await loadCards();
+                updateSyncStatus('synced', 'Gelöscht');
+            } catch (error) {
+                console.error('Error deleting card:', error);
+                deleteCardLocal(cardId);
+            }
+        }
+        
+        async function updateCardStatus(cardId, newStatus) {
+            if (!supabase) return updateCardStatusLocal(cardId, newStatus);
+            
+            updateSyncStatus('syncing', 'Verschiebe...');
+            
+            try {
+                const { error } = await supabase
+                    .from('shared_cards')
+                    .update({ 
+                        status: newStatus,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', cardId)
+                    .eq('workspace_id', SHARED_WORKSPACE_ID);
+                
+                if (error) throw error;
+                
+                await loadCards();
+                updateSyncStatus('synced', 'Verschoben');
+            } catch (error) {
+                console.error('Error updating card:', error);
+                updateCardStatusLocal(cardId, newStatus);
+            }
+        }
+        
+        async function loadWeekGoals() {
+            if (!supabase) return loadWeekGoalsLocal();
+            
+            try {
+                const { data, error } = await supabase
+                    .from('shared_goals')
+                    .select('*')
+                    .eq('workspace_id', SHARED_WORKSPACE_ID)
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                
+                renderWeekGoals(data || []);
+            } catch (error) {
+                console.error('Error loading goals:', error);
+                loadWeekGoalsLocal();
+            }
+        }
+        
+        async function saveWeekGoal(goalText) {
+            if (!supabase) return saveWeekGoalLocal(goalText);
+            
+            updateSyncStatus('syncing', 'Speichere Ziel...');
+            
+            try {
+                const { error } = await supabase
+                    .from('shared_goals')
+                    .insert({
+                        workspace_id: SHARED_WORKSPACE_ID,
+                        text: goalText,
+                        completed: false
+                    });
+                
+                if (error) throw error;
+                
+                await loadWeekGoals();
+                updateSyncStatus('synced', 'Ziel gespeichert');
+            } catch (error) {
+                console.error('Error saving goal:', error);
+                saveWeekGoalLocal(goalText);
+            }
+        }
+        
+        async function toggleGoal(goalId) {
+            if (!supabase) return toggleGoalLocal(goalId);
+            
+            updateSyncStatus('syncing', 'Aktualisiere...');
+            
+            try {
+                // First get current state
+                const { data: goal } = await supabase
+                    .from('shared_goals')
+                    .select('completed')
+                    .eq('id', goalId)
+                    .eq('workspace_id', SHARED_WORKSPACE_ID)
+                    .single();
+                
+                // Toggle it
+                const { error } = await supabase
+                    .from('shared_goals')
+                    .update({ completed: !goal.completed })
+                    .eq('id', goalId)
+                    .eq('workspace_id', SHARED_WORKSPACE_ID);
+                
+                if (error) throw error;
+                
+                await loadWeekGoals();
+                updateSyncStatus('synced', 'Aktualisiert');
+            } catch (error) {
+                console.error('Error toggling goal:', error);
+                toggleGoalLocal(goalId);
+            }
+        }
+        
+        async function deleteGoal(goalId) {
+            if (!supabase) return deleteGoalLocal(goalId);
+            
+            updateSyncStatus('syncing', 'Lösche Ziel...');
+            
+            try {
+                const { error } = await supabase
+                    .from('shared_goals')
+                    .delete()
+                    .eq('id', goalId)
+                    .eq('workspace_id', SHARED_WORKSPACE_ID);
+                
+                if (error) throw error;
+                
+                await loadWeekGoals();
+                updateSyncStatus('synced', 'Ziel gelöscht');
+            } catch (error) {
+                console.error('Error deleting goal:', error);
+                deleteGoalLocal(goalId);
+            }
+        }
+        
+        // ========================================
+        // LOCAL STORAGE OPERATIONS (Fallback)
+        // ========================================
+        
+        let localCards = JSON.parse(localStorage.getItem('pepeSharedCards')) || [];
+        let localWeekGoals = JSON.parse(localStorage.getItem('pepeSharedGoals')) || [];
+        let localCardIdCounter = parseInt(localStorage.getItem('pepeSharedCardIdCounter')) || 1;
+        
+        function loadAllDataLocal() {
+            loadCardsLocal();
+            loadWeekGoalsLocal();
+        }
+        
+        function loadCardsLocal() {
+            renderCards(localCards);
+        }
+        
+        function saveCardLocal(cardData) {
+            if (cardData.id) {
+                const index = localCards.findIndex(c => c.id === cardData.id);
+                if (index !== -1) {
+                    localCards[index] = { ...localCards[index], ...cardData };
+                }
+            } else {
+                cardData.id = localCardIdCounter++;
+                cardData.created_at = new Date().toISOString();
+                localCards.push(cardData);
+                localStorage.setItem('pepeSharedCardIdCounter', localCardIdCounter);
+            }
+            
+            localStorage.setItem('pepeSharedCards', JSON.stringify(localCards));
+            loadCardsLocal();
+        }
+        
+        function deleteCardLocal(cardId) {
+            if (!confirm('Möchten Sie diese Karte wirklich löschen?')) return;
+            
+            localCards = localCards.filter(c => c.id !== cardId);
+            localStorage.setItem('pepeSharedCards', JSON.stringify(localCards));
+            loadCardsLocal();
+        }
+        
+        function updateCardStatusLocal(cardId, newStatus) {
+            const card = localCards.find(c => c.id === cardId);
+            if (card) {
+                card.status = newStatus;
+                card.updated_at = new Date().toISOString();
+                localStorage.setItem('pepeSharedCards', JSON.stringify(localCards));
+                loadCardsLocal();
+            }
+        }
+        
+        function loadWeekGoalsLocal() {
+            renderWeekGoals(localWeekGoals);
+        }
+        
+        function saveWeekGoalLocal(goalText) {
+            const goal = {
+                id: Date.now(),
+                text: goalText,
+                completed: false,
+                created_at: new Date().toISOString()
+            };
+            localWeekGoals.push(goal);
+            localStorage.setItem('pepeSharedGoals', JSON.stringify(localWeekGoals));
+            loadWeekGoalsLocal();
+        }
+        
+        function toggleGoalLocal(goalId) {
+            const goal = localWeekGoals.find(g => g.id === goalId);
             if (goal) {
                 goal.completed = !goal.completed;
-                saveWeekGoals();
-                renderWeekGoals();
+                localStorage.setItem('pepeSharedGoals', JSON.stringify(localWeekGoals));
+                loadWeekGoalsLocal();
             }
         }
-
-        function deleteGoal(id) {
-            weekGoals = weekGoals.filter(g => g.id !== id);
-            saveWeekGoals();
-            renderWeekGoals();
+        
+        function deleteGoalLocal(goalId) {
+            localWeekGoals = localWeekGoals.filter(g => g.id !== goalId);
+            localStorage.setItem('pepeSharedGoals', JSON.stringify(localWeekGoals));
+            loadWeekGoalsLocal();
         }
+        
+        // ========================================
+        // UI RENDERING
+        // ========================================
+        
+        function renderCards(cards) {
+            // Priority order: high (3), medium (2), low (1)
+            const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
 
-        function renderWeekGoals() {
-            const container = document.getElementById('weekGoalsList');
-            container.innerHTML = '';
-            
-            weekGoals.forEach(goal => {
-                const goalElement = document.createElement('div');
-                goalElement.className = 'goal-item';
-                goalElement.innerHTML = `
-                    <input type="checkbox" ${goal.completed ? 'checked' : ''} 
-                           onchange="toggleGoal(${goal.id})">
-                    <span style="${goal.completed ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
-                        ${goal.text}
-                    </span>
-                    <button class="card-btn" onclick="deleteGoal(${goal.id})" style="margin-left: auto;">🗑️</button>
-                `;
-                container.appendChild(goalElement);
-            });
-        }
-
-        function saveWeekGoals() {
-            localStorage.setItem('pepeWeekGoals', JSON.stringify(weekGoals));
-        }
-
-        function loadWeekGoals() {
-            renderWeekGoals();
-        }
-
-        // Card Management
-        function openCardModal(status = 'todo', cardId = null) {
-            const modal = document.getElementById('cardModal');
-            const form = document.getElementById('cardForm');
-            const modalTitle = document.getElementById('modalTitle');
-            
-            form.reset();
-            
-            if (cardId) {
-                const card = cards.find(c => c.id === cardId);
-                if (card) {
-                    modalTitle.textContent = 'Karte bearbeiten';
-                    document.getElementById('cardId').value = card.id;
-                    document.getElementById('cardStatus').value = card.status;
-                    document.getElementById('cardTitle').value = card.title;
-                    document.getElementById('cardDescription').value = card.description || '';
-                    
-                    card.tags.forEach(tag => {
-                        const checkbox = document.getElementById(`tag-${tag.toLowerCase()}`);
-                        if (checkbox) checkbox.checked = true;
-                    });
-                }
-            } else {
-                modalTitle.textContent = 'Neue Karte erstellen';
-                document.getElementById('cardStatus').value = status;
-            }
-            
-            modal.classList.add('active');
-        }
-
-        function closeCardModal() {
-            document.getElementById('cardModal').classList.remove('active');
-        }
-
-        function saveCard(event) {
-            event.preventDefault();
-            
-            const cardId = document.getElementById('cardId').value;
-            const title = document.getElementById('cardTitle').value;
-            const description = document.getElementById('cardDescription').value;
-            const status = document.getElementById('cardStatus').value;
-            
-            const tags = [];
-            document.querySelectorAll('.tag-selector input[type="checkbox"]:checked').forEach(checkbox => {
-                tags.push(checkbox.value);
-            });
-            
-            if (cardId) {
-                // Edit existing card
-                const cardIndex = cards.findIndex(c => c.id === parseInt(cardId));
-                if (cardIndex !== -1) {
-                    cards[cardIndex] = {
-                        ...cards[cardIndex],
-                        title,
-                        description,
-                        tags,
-                        updatedAt: new Date().toISOString()
-                    };
-                }
-            } else {
-                // Create new card
-                const newCard = {
-                    id: cardIdCounter++,
-                    title,
-                    description,
-                    tags,
-                    status,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-                cards.push(newCard);
-                localStorage.setItem('pepeCardIdCounter', cardIdCounter);
-            }
-            
-            saveCards();
-            loadCards();
-            closeCardModal();
-        }
-
-        function deleteCard(cardId) {
-            if (confirm('Möchten Sie diese Karte wirklich löschen?')) {
-                cards = cards.filter(c => c.id !== cardId);
-                saveCards();
-                loadCards();
-            }
-        }
-
-        function saveCards() {
-            localStorage.setItem('pepeKanbanCards', JSON.stringify(cards));
-        }
-
-        function loadCards() {
             ['todo', 'progress', 'review', 'done'].forEach(status => {
                 const container = document.getElementById(`${status}-cards`);
                 container.innerHTML = '';
-                
-                const statusCards = cards.filter(card => card.status === status);
+
+                const statusCards = cards
+                    .filter(card => card.status === status)
+                    .sort((a, b) => {
+                        const priorityA = priorityOrder[a.priority] || 2; // default to medium
+                        const priorityB = priorityOrder[b.priority] || 2; // default to medium
+                        return priorityB - priorityA; // Sort high to low
+                    });
+
                 statusCards.forEach(card => {
                     const cardElement = createCardElement(card);
                     container.appendChild(cardElement);
                 });
             });
         }
-
+        
         function createCardElement(card) {
             const cardDiv = document.createElement('div');
             cardDiv.className = 'card';
             cardDiv.draggable = true;
             cardDiv.dataset.cardId = card.id;
             
-            const tagsHtml = card.tags.map(tag => 
+            const priorityText = {
+                'high': 'HOCH',
+                'medium': 'MITTEL',
+                'low': 'NIEDRIG'
+            };
+
+            const priorityIcon = {
+                'high': '🔴',
+                'medium': '🟡',
+                'low': '🟢'
+            };
+
+            const priority = card.priority || 'medium';
+            const tagsHtml = (card.tags || []).map(tag =>
                 `<span class="tag card-tag tag-${tag.toLowerCase()}">${tag}</span>`
             ).join('');
-            
+
             cardDiv.innerHTML = `
-                <div class="card-title">${card.title}</div>
+                <div class="card-title">
+                    <span class="card-priority priority-${priority}">${priorityIcon[priority]} ${priorityText[priority]}</span>
+                    ${card.title}
+                </div>
                 ${card.description ? `<div class="card-description">${card.description}</div>` : ''}
                 <div class="card-footer">
                     <div class="card-tags">${tagsHtml}</div>
@@ -874,11 +1253,136 @@
             
             return cardDiv;
         }
+        
+        function renderWeekGoals(goals) {
+            const container = document.getElementById('weekGoalsList');
+            container.innerHTML = '';
+            
+            if (goals.length === 0) {
+                container.innerHTML = '<p style="color: #9ca3af;">Noch keine Wochenziele vorhanden</p>';
+                return;
+            }
+            
+            goals.forEach(goal => {
+                const goalElement = document.createElement('div');
+                goalElement.className = 'goal-item';
+                goalElement.innerHTML = `
+                    <input type="checkbox" ${goal.completed ? 'checked' : ''} 
+                           onchange="toggleGoal(${goal.id})">
+                    <span style="${goal.completed ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
+                        ${goal.text}
+                    </span>
+                    <button class="card-btn" onclick="deleteGoal(${goal.id})" style="margin-left: auto;">🗑️</button>
+                `;
+                container.appendChild(goalElement);
+            });
+        }
+        
+        // ========================================
+        // UI INTERACTIONS
+        // ========================================
+        
+        function updateSyncStatus(status, text) {
+            const statusDiv = document.getElementById('syncStatus');
+            const textSpan = document.getElementById('syncText');
+            
+            statusDiv.className = `sync-status ${status}`;
+            textSpan.textContent = text;
+        }
+        
+        function showVisionScreen() {
+            const visionScreen = document.getElementById('visionScreen');
+            const appContainer = document.getElementById('appContainer');
+            
+            // Start countdown at 5 seconds
+            let count = 5;
+            
+            // Fade out after 5 seconds
+            setTimeout(() => {
+                visionScreen.classList.add('hidden');
+                setTimeout(() => {
+                    visionScreen.style.display = 'none';
+                    appContainer.classList.add('visible');
+                }, 1000);
+            }, count * 1000);
+        }
+        
+        function addWeekGoal() {
+            const goal = prompt('Neues Wochenziel eingeben:');
+            if (goal && goal.trim()) {
+                saveWeekGoal(goal.trim());
+            }
+        }
+        
+        function openCardModal(status = 'todo', cardId = null) {
+            const modal = document.getElementById('cardModal');
+            const form = document.getElementById('cardForm');
+            const modalTitle = document.getElementById('modalTitle');
+            
+            form.reset();
+            
+            if (cardId) {
+                const cards = supabase ? [] : localCards;
+                const card = cards.find(c => c.id === cardId) || localCards.find(c => c.id === cardId);
+                if (card) {
+                    modalTitle.textContent = 'Karte bearbeiten';
+                    document.getElementById('cardId').value = card.id;
+                    document.getElementById('cardStatus').value = card.status;
+                    document.getElementById('cardTitle').value = card.title;
+                    document.getElementById('cardDescription').value = card.description || '';
+                    document.getElementById('cardPriority').value = card.priority || 'medium';
 
-        // Email Functionality
+                    (card.tags || []).forEach(tag => {
+                        const checkbox = document.getElementById(`tag-${tag.toLowerCase()}`);
+                        if (checkbox) checkbox.checked = true;
+                    });
+                }
+            } else {
+                modalTitle.textContent = 'Neue Karte erstellen';
+                document.getElementById('cardStatus').value = status;
+            }
+            
+            modal.classList.add('active');
+        }
+        
+        function closeCardModal() {
+            document.getElementById('cardModal').classList.remove('active');
+        }
+        
+        function handleCardSubmit(event) {
+            event.preventDefault();
+            
+            const cardId = document.getElementById('cardId').value;
+            const title = document.getElementById('cardTitle').value;
+            const description = document.getElementById('cardDescription').value;
+            const status = document.getElementById('cardStatus').value;
+            const priority = document.getElementById('cardPriority').value;
+
+            const tags = [];
+            document.querySelectorAll('.tag-selector input[type="checkbox"]:checked').forEach(checkbox => {
+                tags.push(checkbox.value);
+            });
+
+            const cardData = {
+                title,
+                description,
+                tags,
+                status,
+                priority
+            };
+            
+            if (cardId) {
+                cardData.id = parseInt(cardId) || cardId;
+            }
+            
+            saveCard(cardData);
+            closeCardModal();
+        }
+        
         function openEmailModal(cardId) {
             const modal = document.getElementById('emailModal');
-            const card = cards.find(c => c.id === cardId);
+            const cards = supabase ? [] : localCards;
+            const card = cards.find(c => c.id === cardId) || localCards.find(c => c.id === cardId);
             
             if (card) {
                 document.getElementById('emailCardId').value = cardId;
@@ -889,7 +1393,7 @@ hier ist eine Erinnerung bezüglich folgender Aufgabe:
 
 Titel: ${card.title}
 ${card.description ? `Beschreibung: ${card.description}` : ''}
-Tags: ${card.tags.join(', ') || 'Keine'}
+Tags: ${(card.tags || []).join(', ') || 'Keine'}
 Status: ${getStatusName(card.status)}
 
 Bitte prüfen Sie den aktuellen Stand.
@@ -902,12 +1406,12 @@ Pepe-Dom Team`;
             
             modal.classList.add('active');
         }
-
+        
         function closeEmailModal() {
             document.getElementById('emailModal').classList.remove('active');
             document.getElementById('emailForm').reset();
         }
-
+        
         function sendEmail(event) {
             event.preventDefault();
             
@@ -915,18 +1419,16 @@ Pepe-Dom Team`;
             const subject = document.getElementById('emailSubject').value;
             const message = document.getElementById('emailMessage').value;
             
-            // Create mailto link
             const mailtoLink = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
             window.location.href = mailtoLink;
             
             closeEmailModal();
             
-            // Show success message
             setTimeout(() => {
                 alert('E-Mail-Client wurde geöffnet. Bitte senden Sie die E-Mail manuell ab.');
             }, 100);
         }
-
+        
         function getStatusName(status) {
             const statusNames = {
                 'todo': 'To Do',
@@ -936,10 +1438,13 @@ Pepe-Dom Team`;
             };
             return statusNames[status] || status;
         }
-
-        // Drag and Drop
+        
+        // ========================================
+        // DRAG AND DROP
+        // ========================================
+        
         let draggedCard = null;
-
+        
         function setupDragAndDrop() {
             const columns = document.querySelectorAll('.column');
             
@@ -949,16 +1454,16 @@ Pepe-Dom Team`;
                 column.addEventListener('dragleave', handleDragLeave);
             });
         }
-
+        
         function handleDragStart(e) {
             draggedCard = e.target;
             e.target.classList.add('dragging');
         }
-
+        
         function handleDragEnd(e) {
             e.target.classList.remove('dragging');
         }
-
+        
         function handleDragOver(e) {
             e.preventDefault();
             const column = e.target.closest('.column');
@@ -966,14 +1471,14 @@ Pepe-Dom Team`;
                 column.classList.add('drag-over');
             }
         }
-
+        
         function handleDragLeave(e) {
             const column = e.target.closest('.column');
             if (column) {
                 column.classList.remove('drag-over');
             }
         }
-
+        
         function handleDrop(e) {
             e.preventDefault();
             const column = e.target.closest('.column');
@@ -982,24 +1487,27 @@ Pepe-Dom Team`;
                 column.classList.remove('drag-over');
                 
                 const newStatus = column.dataset.status;
-                const cardId = parseInt(draggedCard.dataset.cardId);
+                const cardId = parseInt(draggedCard.dataset.cardId) || draggedCard.dataset.cardId;
                 
-                const card = cards.find(c => c.id === cardId);
-                if (card) {
-                    card.status = newStatus;
-                    card.updatedAt = new Date().toISOString();
-                    saveCards();
-                    loadCards();
-                }
+                updateCardStatus(cardId, newStatus);
             }
         }
-
-        // Event Listeners
-        document.getElementById('cardForm').addEventListener('submit', saveCard);
-        document.getElementById('emailForm').addEventListener('submit', sendEmail);
-
-        // Initialize app when DOM is ready
-        document.addEventListener('DOMContentLoaded', initApp);
+        
+        // ========================================
+        // INITIALIZATION
+        // ========================================
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            showVisionScreen();
+            setupDragAndDrop();
+            
+            // Event Listeners
+            document.getElementById('cardForm').addEventListener('submit', handleCardSubmit);
+            document.getElementById('emailForm').addEventListener('submit', sendEmail);
+            
+            // Initialize Supabase or fallback
+            initSupabase();
+        });
     </script>
 </body>
 </html>
